@@ -32,6 +32,11 @@ private:
 	bool isStart = false;
 
 	int _selectedMap = 0;
+	LayerColor* _mapSelectLayer = nullptr;
 	Label* _mapLabel = nullptr;
+
+	void showMapSelectLayer();
 	void onChangeMap(Ref* sender);
+	void onMapStart(Ref* sender);
+	void onMapReturn(Ref* sender);
 };

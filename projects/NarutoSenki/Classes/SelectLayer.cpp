@@ -25,7 +25,94 @@ void SelectLayer::onGameStart()
 		isStart = true;
 
 	setKeypadEnabled(false);
+	SimpleAudioEngine::sharedEngine()->playEffect("Audio/Menu/confirm.ogg");
 
+	auto visibleSize = Director::getInstance()->getVisibleSize();
+	_mapSelectLayer = LayerColor::create(Color4B(0, 0, 0, 0), visibleSize.width, visibleSize.height);
+	this->addChild(_mapSelectLayer, 9999);
+
+	auto touchListener = EventListenerTouchOneByOne::create();
+	touchListener->setSwallowTouches(true);
+	touchListener->onTouchBegan = [](Touch* touch, Event* event) { return true; };
+	_eventDispatcher->addEventListenerWithSceneGraphPriority(touchListener, _mapSelectLayer);
+
+	auto fadeBlack = FadeTo::create(0.5f, 255);
+	auto wait2Sec = DelayTime::create(1.5f);
+	auto showUI = CallFunc::create(CC_CALLBACK_0(SelectLayer::showMapSelectLayer, this));
+
+	_mapSelectLayer->runAction(Sequence::create(fadeBlack, wait2Sec, showUI, nullptr));
+}
+
+void SelectLayer::showMapSelectLayer()
+{
+	if (!_mapSelectLayer)
+		return;
+
+	auto visibleSize = Director::getInstance()->getVisibleSize();
+	_selectedMap = 0;
+	UserDefault::getInstance()->setIntegerForKey("selected_map_id", 0);
+
+	auto titleLabel = Label::createWithSystemFont("PILIH ARENA / MAP", "Arial", 26);
+	titleLabel->setColor(Color3B::YELLOW);
+	titleLabel->setPosition(Vec2(visibleSize.width * 0.5f, visibleSize.height * 0.78f));
+	_mapSelectLayer->addChild(titleLabel);
+
+	_mapLabel = Label::createWithSystemFont("< MAP: RANDOM >", "Arial", 22);
+	_mapLabel->setColor(Color3B::WHITE);
+	auto mapItem = MenuItemLabel::create(_mapLabel, CC_CALLBACK_1(SelectLayer::onChangeMap, this));
+	mapItem->setPosition(Vec2(visibleSize.width * 0.5f, visibleSize.height * 0.52f));
+
+	auto returnLabel = Label::createWithSystemFont("[ RETURN ]", "Arial", 20);
+	returnLabel->setColor(Color3B(255, 100, 100));
+	auto returnItem = MenuItemLabel::create(returnLabel, CC_CALLBACK_1(SelectLayer::onMapReturn, this));
+	returnItem->setPosition(Vec2(visibleSize.width * 0.25f, visibleSize.height * 0.22f));
+
+	auto startLabel = Label::createWithSystemFont("[ START ]", "Arial", 20);
+	startLabel->setColor(Color3B(100, 255, 100));
+	auto startItem = MenuItemLabel::create(startLabel, CC_CALLBACK_1(SelectLayer::onMapStart, this));
+	startItem->setPosition(Vec2(visibleSize.width * 0.75f, visibleSize.height * 0.22f));
+
+	auto menu = Menu::create(mapItem, returnItem, startItem, nullptr);
+	menu->setPosition(Vec2::ZERO);
+	_mapSelectLayer->addChild(menu);
+}
+
+void SelectLayer::onChangeMap(Ref* sender)
+{
+	SimpleAudioEngine::sharedEngine()->playEffect("Audio/Menu/select.ogg");
+
+	int totalMaps = getMapCount();
+	if (totalMaps <= 0)
+		totalMaps = 1;
+
+	_selectedMap = (_selectedMap + 1) % (totalMaps + 1);
+
+	if (_selectedMap == 0) {
+		_mapLabel->setString("< MAP: RANDOM >");
+	} else {
+		_mapLabel->setString(StringUtils::format("< MAP: %d >", _selectedMap));
+	}
+
+	UserDefault::getInstance()->setIntegerForKey("selected_map_id", _selectedMap);
+	UserDefault::getInstance()->flush();
+}
+
+void SelectLayer::onMapReturn(Ref* sender)
+{
+	SimpleAudioEngine::sharedEngine()->playEffect("Audio/Menu/cancel.ogg");
+
+	if (_mapSelectLayer) {
+		_mapSelectLayer->removeFromParentAndCleanup(true);
+		_mapSelectLayer = nullptr;
+		_mapLabel = nullptr;
+	}
+
+	isStart = false;
+	setKeypadEnabled(true);
+}
+
+void SelectLayer::onMapStart(Ref* sender)
+{
 	SimpleAudioEngine::sharedEngine()->stopBackgroundMusic(true);
 	SimpleAudioEngine::sharedEngine()->playEffect("Audio/Menu/confirm.ogg");
 
@@ -51,43 +138,15 @@ void SelectLayer::onEnterTransitionDidFinish()
 {
 	Layer::onEnterTransitionDidFinish();
 	setKeypadEnabled(true);
-
-	// --- MULAI UI PILIH MAP ---
-	_selectedMap = 0;
-	UserDefault::getInstance()->setIntegerForKey("selected_map_id", 0);
-
-	_mapLabel = Label::createWithSystemFont("MAP: 1 (KLIK GANTI)", "Arial", 18);
-	_mapLabel->enableOutline(Color4B::BLACK, 2);
-
-	auto mapMenuItem = MenuItemLabel::create(_mapLabel, CC_CALLBACK_1(SelectLayer::onChangeMap, this));
-	auto visibleSize = Director::getInstance()->getVisibleSize();
-	mapMenuItem->setPosition(Vec2(visibleSize.width * 0.5f, 30));
-
-	auto mapMenu = Menu::create(mapMenuItem, nullptr);
-	mapMenu->setPosition(Vec2::ZERO);
-	this->addChild(mapMenu, 999);
-	// --- SELESAI UI PILIH MAP ---
 }
 
 void SelectLayer::keyBackClicked()
 {
-	setKeypadEnabled(false);
-
-	lua_call_func(UiFlowKeys::kBackToStartMenu);
-}
-
-void SelectLayer::onChangeMap(Ref* sender)
-{
-	_selectedMap = (_selectedMap + 1) % 3;
-
-	if (_selectedMap == 0) {
-		_mapLabel->setString("MAP: 1 (KLIK GANTI)");
-	} else if (_selectedMap == 1) {
-		_mapLabel->setString("MAP: 2 (KLIK GANTI)");
-	} else if (_selectedMap == 2) {
-		_mapLabel->setString("MAP: 3 (KLIK GANTI)");
+	if (_mapSelectLayer) {
+		onMapReturn(nullptr);
+		return;
 	}
 
-	UserDefault::getInstance()->setIntegerForKey("selected_map_id", _selectedMap);
-	UserDefault::getInstance()->flush();
+	setKeypadEnabled(false);
+	lua_call_func(UiFlowKeys::kBackToStartMenu);
 }
