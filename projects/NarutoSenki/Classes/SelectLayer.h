@@ -1,7 +1,7 @@
 #pragma once
 #include "LoadLayer.h"
 
-class SelectLayer : public Layer
+class SelectLayer : public CCLayer
 {
 public:
 	~SelectLayer();
@@ -32,11 +32,11 @@ private:
 	bool isStart = false;
 
 	int _selectedMap = 0;
-	LayerColor* _mapSelectLayer = nullptr;
-	Label* _mapLabel = nullptr;
+	CCLayerColor* _mapSelectLayer = nullptr;
+	CCLabelBMFont* _mapLabel = nullptr;
 
 	void showMapSelectLayer();
-	void onChangeMap(Ref* sender);
-	void onMapStart(Ref* sender);
-	void onMapReturn(Ref* sender);
+	void onChangeMap(CCObject* sender);
+	void onMapStart(CCObject* sender);
+	void onMapReturn(CCObject* sender);
 };
