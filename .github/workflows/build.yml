@@ -1,29 +1,82 @@
-name: Build Narsen APK
-"on":
+name: Build Naruto Senki APK
+
+on:
   workflow_dispatch:
+  
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - name: Setup JDK 17
+      - name: Pembersih Otomatis Ruang Disk & Sisa Cache
+        run: |
+          echo "=== Membersihkan ruang disk & file sementara ==="
+          rm -rf /home/runner/work/_temp/*
+          mkdir -p /home/runner/work/_temp
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk/* /opt/ghc /usr/local/share/boost || true
+          sudo apt-get clean
+          df -h
+
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install Android NDK r21e (Menggunakan Java 17 bawaan)
+        run: |
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;21.4.7075529"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/21.4.7075529" >> $GITHUB_ENV
+          echo "NDK_ROOT=$ANDROID_HOME/ndk/21.4.7075529" >> $GITHUB_ENV
+
+      - name: Setup Java JDK 8 (Untuk Gradle)
         uses: actions/setup-java@v4
         with:
-          distribution: 'temurin'
-          java-version: '17'
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-      - name: Setup NDK
+          distribution: 'zulu'
+          java-version: '8'
+
+      - name: Fix Header Path fmt & Build APK
+        working-directory: projects/NarutoSenki/proj.android-studio
         run: |
-          sdkmanager "ndk;25.1.8937393"
-          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
-      - name: Build APK
-        run: |
-          cd projects/NarutoSenki/proj.android-studio
+          # Cari lokasi folder induk dari fmt/core.h di dalam repo
+          FMT_CORE=$(find "$GITHUB_WORKSPACE" -path "*/fmt/core.h" | head -n 1)
+          if [ -n "$FMT_CORE" ]; then
+            FMT_INC=$(dirname $(dirname "$FMT_CORE"))
+            echo "Ditemukan folder include fmt di: $FMT_INC"
+            # Tambahkan path fmt ke Android.mk milik Lua dan proyek utama
+            find "$GITHUB_WORKSPACE" -name "Android.mk" -exec sed -i "s|LOCAL_C_INCLUDES :=|LOCAL_C_INCLUDES := $FMT_INC|g" {} +
+          else
+            echo "PERINGATAN: fmt/core.h tidak ditemukan di repo, mengunduh fmt..."
+            git clone --depth 1 --branch 9.1.0 https://github.com "$GITHUB_WORKSPACE/external/fmt"
+            FMT_INC="$GITHUB_WORKSPACE/external/fmt/include"
+            find "$GITHUB_WORKSPACE" -name "Android.mk" -exec sed -i "s|LOCAL_C_INCLUDES :=|LOCAL_C_INCLUDES := $FMT_INC|g" {} +
+          fi
+
+          echo "ndk.dir=$ANDROID_NDK_HOME" > local.properties
           chmod +x gradlew
-          ./gradlew assembleDebug --stacktrace
-      - name: Upload APK
-        uses: actions/upload-artifact@v4
+          ./gradlew assembleRelease --stacktrace
+          
+          # Membuat keystore sementara & menandatangani APK
+          keytool -genkey -v -keystore release.keystore -alias naruto -keyalg RSA -keysize 2048 -validity 10000 -storepass 123456 -keypass 123456 -dname "CN=NarutoSenki, OU=Dev, O=Game, L=ID, ST=ID, C=ID"
+          
+          BUILD_TOOLS=$(ls -d $ANDROID_HOME/build-tools/* | tail -n 1)
+          APK_UNSIGNED=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          
+          $BUILD_TOOLS/zipalign -v -p 4 "$APK_UNSIGNED" aligned.apk
+          $BUILD_TOOLS/apksigner sign --ks release.keystore --ks-pass pass:123456 --key-pass pass:123456 --out NarutoSenki-V2-Release.apk aligned.apk
+
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: Narsen-MapSelect
-          path: projects/NarutoSenki/proj.android-studio/app/build/outputs/apk/debug/*.apk
+          tag_name: v1.0.${{ github.run_number }}
+          name: Naruto Senki V2 Build #${{ github.run_number }}
+          files: projects/NarutoSenki/proj.android-studio/NarutoSenki-V2-Release.apk
+
+      - name: Pembersih Otomatis Setelah Build
+        if: always()
+        run: |
+          rm -rf /home/runner/work/_temp/* || true
+          rm -rf projects/NarutoSenki/proj.android-studio/app/build || true
