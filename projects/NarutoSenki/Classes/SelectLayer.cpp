@@ -51,6 +51,22 @@ void SelectLayer::onEnterTransitionDidFinish()
 {
 	Layer::onEnterTransitionDidFinish();
 	setKeypadEnabled(true);
+
+	// --- MULAI UI PILIH MAP ---
+	_selectedMap = 0;
+	UserDefault::getInstance()->setIntegerForKey("selected_map_id", 0);
+
+	_mapLabel = Label::createWithSystemFont("MAP: 1 (KLIK GANTI)", "Arial", 18);
+	_mapLabel->enableOutline(Color4B::BLACK, 2);
+
+	auto mapMenuItem = MenuItemLabel::create(_mapLabel, CC_CALLBACK_1(SelectLayer::onChangeMap, this));
+	auto visibleSize = Director::getInstance()->getVisibleSize();
+	mapMenuItem->setPosition(Vec2(visibleSize.width * 0.5f, 30));
+
+	auto mapMenu = Menu::create(mapMenuItem, nullptr);
+	mapMenu->setPosition(Vec2::ZERO);
+	this->addChild(mapMenu, 999);
+	// --- SELESAI UI PILIH MAP ---
 }
 
 void SelectLayer::keyBackClicked()
@@ -58,4 +74,20 @@ void SelectLayer::keyBackClicked()
 	setKeypadEnabled(false);
 
 	lua_call_func(UiFlowKeys::kBackToStartMenu);
+}
+
+void SelectLayer::onChangeMap(Ref* sender)
+{
+	_selectedMap = (_selectedMap + 1) % 3;
+
+	if (_selectedMap == 0) {
+		_mapLabel->setString("MAP: 1 (KLIK GANTI)");
+	} else if (_selectedMap == 1) {
+		_mapLabel->setString("MAP: 2 (KLIK GANTI)");
+	} else if (_selectedMap == 2) {
+		_mapLabel->setString("MAP: 3 (KLIK GANTI)");
+	}
+
+	UserDefault::getInstance()->setIntegerForKey("selected_map_id", _selectedMap);
+	UserDefault::getInstance()->flush();
 }
