@@ -30,4 +30,8 @@ private:
 	void keyBackClicked();
 
 	bool isStart = false;
+
+	int _selectedMap = 0;
+	Label* _mapLabel = nullptr;
+	void onChangeMap(Ref* sender);
 };
