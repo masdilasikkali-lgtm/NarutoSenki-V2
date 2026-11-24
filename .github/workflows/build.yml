@@ -1,0 +1,29 @@
+name: Build Narsen APK
+on:
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Setup NDK
+        run: |
+          sdkmanager "ndk;25.1.8937393"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/25.1.8937393" >> $GITHUB_ENV
+      - name: Build APK
+        run: |
+          cd projects/NarutoSenki/proj.android-studio
+          chmod +x gradlew
+          ./gradlew assembleDebug --stacktrace
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Narsen-MapSelect
+          path: projects/NarutoSenki/proj.android-studio/app/build/outputs/apk/debug/*.apk
