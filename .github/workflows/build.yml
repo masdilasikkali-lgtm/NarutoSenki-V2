@@ -2,13 +2,13 @@ name: Build Naruto Senki APK
 
 on:
   workflow_dispatch:
-  
+
 permissions:
   contents: write
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Pembersih Otomatis Ruang Disk & Sisa Cache
@@ -25,10 +25,10 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Install Android NDK r21e (Menggunakan Java 17 bawaan)
+      - name: Install Android NDK r21e & Build Tools (Java 17 Bawaan)
         run: |
           yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses || true
-          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;21.4.7075529"
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "ndk;21.4.7075529" "build-tools;29.0.3" "platforms;android-29"
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/21.4.7075529" >> $GITHUB_ENV
           echo "NDK_ROOT=$ANDROID_HOME/ndk/21.4.7075529" >> $GITHUB_ENV
 
@@ -41,30 +41,41 @@ jobs:
       - name: Fix Header Path fmt & Build APK
         working-directory: projects/NarutoSenki/proj.android-studio
         run: |
-          # Cari lokasi folder induk dari fmt/core.h di dalam repo
+          # 1. Cari lokasi folder induk dari fmt/core.h di dalam repo
           FMT_CORE=$(find "$GITHUB_WORKSPACE" -path "*/fmt/core.h" | head -n 1)
           if [ -n "$FMT_CORE" ]; then
             FMT_INC=$(dirname $(dirname "$FMT_CORE"))
             echo "Ditemukan folder include fmt di: $FMT_INC"
-            # Tambahkan path fmt ke Android.mk milik Lua dan proyek utama
-            find "$GITHUB_WORKSPACE" -name "Android.mk" -exec sed -i "s|LOCAL_C_INCLUDES :=|LOCAL_C_INCLUDES := $FMT_INC|g" {} +
           else
-            echo "PERINGATAN: fmt/core.h tidak ditemukan di repo, mengunduh fmt..."
+            echo "PERINGATAN: fmt/core.h tidak ditemukan, mengunduh dari GitHub..."
             git clone --depth 1 --branch 9.1.0 https://github.com "$GITHUB_WORKSPACE/external/fmt"
             FMT_INC="$GITHUB_WORKSPACE/external/fmt/include"
-            find "$GITHUB_WORKSPACE" -name "Android.mk" -exec sed -i "s|LOCAL_C_INCLUDES :=|LOCAL_C_INCLUDES := $FMT_INC|g" {} +
           fi
 
-          echo "ndk.dir=$ANDROID_NDK_HOME" > local.properties
+          # 2. Suntikkan path fmt ke semua Android.mk (mendukung := maupun +=) & environment compiler
+          find "$GITHUB_WORKSPACE" -name "Android.mk" -exec sed -i -E "s|(LOCAL_C_INCLUDES[[:space:]]*[:+]?=)|\1 $FMT_INC |g" {} +
+          export CPATH="$FMT_INC:$CPATH"
+          export CPLUS_INCLUDE_PATH="$FMT_INC:$CPLUS_INCLUDE_PATH"
+
+          # 3. Konfigurasi SDK & NDK di local.properties
+          echo "sdk.dir=$ANDROID_HOME" > local.properties
+          echo "ndk.dir=$ANDROID_NDK_HOME" >> local.properties
+
+          # 4. Build Release APK (tanpa spam titik-titik unduhan Gradle)
           chmod +x gradlew
-          ./gradlew assembleRelease --stacktrace
-          
-          # Membuat keystore sementara & menandatangani APK
+          ./gradlew assembleRelease --no-daemon --console=plain --stacktrace
+
+          # 5. Membuat keystore sementara & menandatangani APK
           keytool -genkey -v -keystore release.keystore -alias naruto -keyalg RSA -keysize 2048 -validity 10000 -storepass 123456 -keypass 123456 -dname "CN=NarutoSenki, OU=Dev, O=Game, L=ID, ST=ID, C=ID"
-          
-          BUILD_TOOLS=$(ls -d $ANDROID_HOME/build-tools/* | tail -n 1)
+
+          BUILD_TOOLS="$ANDROID_HOME/build-tools/29.0.3"
           APK_UNSIGNED=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
-          
+
+          if [ -z "$APK_UNSIGNED" ]; then
+            echo "ERROR: File APK unsigned tidak ditemukan setelah build!"
+            exit 1
+          fi
+
           $BUILD_TOOLS/zipalign -v -p 4 "$APK_UNSIGNED" aligned.apk
           $BUILD_TOOLS/apksigner sign --ks release.keystore --ks-pass pass:123456 --key-pass pass:123456 --out NarutoSenki-V2-Release.apk aligned.apk
 
